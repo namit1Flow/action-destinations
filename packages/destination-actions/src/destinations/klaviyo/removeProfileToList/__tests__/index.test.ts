@@ -19,7 +19,7 @@ describe('Remove List from Profile', () => {
       properties: {}
     })
 
-    await expect(testDestination.testAction('removeProfileToList', { event, settings })).rejects.toThrowError(
+    await expect(testDestination.testAction('addProfileToList', { event, settings })).rejects.toThrowError(
       IntegrationError
     )
   })

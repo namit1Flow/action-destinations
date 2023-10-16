@@ -1,11 +1,11 @@
 import type { DestinationDefinition } from '@segment/actions-core'
 import type { Settings } from './generated-types'
 
+import { API_URL, REVISION_DATE } from './config'
 import upsertProfile from './upsertProfile'
-import { API_URL } from './config'
-
+import addProfileToList from './addProfileToList'
+import removeProfileToList from './removeProfileToList'
 import trackEvent from './trackEvent'
-
 import orderCompleted from './orderCompleted'
 
 const destination: DestinationDefinition<Settings> = {
@@ -54,13 +54,15 @@ const destination: DestinationDefinition<Settings> = {
       headers: {
         Authorization: `Klaviyo-API-Key ${settings.api_key}`,
         Accept: 'application/json',
-        revision: '2023-09-15'
+        revision: REVISION_DATE
       }
     }
   },
 
   actions: {
     upsertProfile,
+    addProfileToList,
+    removeProfileToList,
     trackEvent,
     orderCompleted
   }

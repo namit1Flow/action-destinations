@@ -62,12 +62,9 @@ export interface EventData {
     }
   }
 }
-
 export interface listData {
-  data: [
-    {
-      type: string
-      id?: string
-    }
-  ]
+  data: {
+    type: string
+    id?: string
+  }[]
 }
