@@ -1,0 +1,89 @@
+# This workflow will build and publish Action Destination package and trigger a buildkite workflow.
+# For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
+
+name: Publish Canary
+
+on:
+  push:
+    branches:
+      # Remove before merging to master
+      - add-tar-release-pipeline
+      - stage
+  # Manual trigger
+  workflow_dispatch:
+    # branches:
+    #   - add-tar-release-pipeline
+    # # inputs:
+    # #   service_branch:
+    # #     description: 'The service branch to update. If a branch is not present, a new branch will be created.'
+    # #     required: true
+    # #     default: 'stage'
+
+jobs:
+  build-and-publish:
+    env:
+      HUSKY: 0
+    runs-on: ubuntu-20.04
+
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org'
+          cache: yarn
+
+      - name: Use Github Personal Access Token
+        run: git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf ssh://git@github.com/
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Get Package Version
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./packages/destination-actions/package.json').version")
+          SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`
+          echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> $GITHUB_ENV
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+          echo "ACTION_DESTINATION_VERSION=${PACKAGE_VERSION}-${SHORT_SHA}" >> $GITHUB_ENV
+
+      - name: Build
+        run: |
+          NODE_ENV=production yarn build
+
+      - name: Set NPM Token
+        run: |
+          npm set '//registry.npmjs.org/:_authToken' ${{ secrets.NPM_PUBLISH_TOKEN }}
+          npm whoami
+
+      - name: Publish Canary Packages
+        run: |
+          yarn lerna publish --canary --preid $(git branch --show-current) --no-push --no-git-tag-version
+
+      - name: Trigger Buildkite Pipeline
+        run: |
+          result=$(curl --request POST \
+          --url "${{ vars.BUILDKITE_PIPELINE_URL }}" \
+          --header 'Authorization: Bearer ${{ secrets.BUILDKITE_TOKEN }}' \
+          --header 'Content-Type: application/json' \
+          --data '{"commit":"HEAD","branch":"ci-test", "message": "Triggered from :github: run ${{ github.run_id }}: Upgrade action-destination packages ${{ env.ACTION_DESTINATION_VERSION }}","env":{
+          "BRANCH_TO_UPDATE": "${{ github.ref_name }}", "SHORT_SHA": "${{ env.SHORT_SHA }}", "WEEKLY_DEPLOY": "false", "UPGRADE_ACTION_DESTINATIONS": "true", "ACTION_DESTINATIONS_VERSION": "${{ env.ACTION_DESTINATION_VERSION }}", "ACTIONS_RUN_ID": "${{ github.run_id }}" },"meta_data":{}}')
+          BUILDKITE_URL=$(echo $result | jq -r '.web_url')
+          if [[ ${BUILDKITE_URL} -eq null ]]; then
+             echo "Failed to trigger Buildkite pipeline. Reason:$(echo $result | jq -r '.message'))"
+             exit 1
+          else
+            echo "Buildkite pipeline triggered successfully - ${BUILDKITE_URL}"
+          fi

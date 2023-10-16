@@ -1,18 +1,19 @@
 import type { ActionDefinition } from '@segment/actions-core'
-import { IntegrationError } from '@segment/actions-core'
-import type { Settings } from '../generated-types'
+import { IntegrationError, PayloadValidationError } from '@segment/actions-core'
+import type { Settings, AudienceSettings } from '../generated-types'
 import type { Payload } from './generated-types'
 import { gen_update_segment_payload } from '../utils-rt'
 
-const action: ActionDefinition<Settings, Payload> = {
+const action: ActionDefinition<Settings, Payload, AudienceSettings> = {
   title: 'Sync To Yahoo Ads Segment',
   description: 'Sync Segment Audience to Yahoo Ads Segment',
-  defaultSubscription: 'type = "identify" or type = "track"',
+  defaultSubscription: 'type = "identify"',
   fields: {
     segment_audience_id: {
       label: 'Segment Audience Id', // Maps to Yahoo Taxonomy Segment Id
       description: 'Segment Audience Id (aud_...). Maps to "Id" of a Segment node in Yahoo taxonomy',
-      type: 'hidden',
+      type: 'string',
+      unsafe_hidden: true,
       required: true,
       default: {
         '@path': '$.context.personas.computation_id'
@@ -21,7 +22,8 @@ const action: ActionDefinition<Settings, Payload> = {
     segment_audience_key: {
       label: 'Segment Audience Key',
       description: 'Segment Audience Key. Maps to the "Name" of the Segment node in Yahoo taxonomy',
-      type: 'hidden',
+      type: 'string',
+      unsafe_hidden: true,
       required: true,
       default: {
         '@path': '$.context.personas.computation_key'
@@ -46,7 +48,8 @@ const action: ActionDefinition<Settings, Payload> = {
       label: 'Segment Computation Action',
       description:
         "Segment computation class used to determine if input event is from an Engage Audience'. Value must be = 'audience'.",
-      type: 'hidden',
+      type: 'string',
+      unsafe_hidden: true,
       required: true,
       default: {
         '@path': '$.context.personas.computation_class'
@@ -56,60 +59,62 @@ const action: ActionDefinition<Settings, Payload> = {
     enable_batching: {
       label: 'Enable Batching',
       description: 'Enable batching of requests',
-      type: 'hidden', // We should always batch Yahoo requests
-      default: true
+      type: 'boolean', // We should always batch Yahoo requests
+      default: true,
+      unsafe_hidden: true
     },
     batch_size: {
       label: 'Batch Size',
       description: 'Maximum number of events to include in each batch. Actual batch sizes may be lower.',
       type: 'number',
       unsafe_hidden: true,
-      required: false,
       default: 1000
     },
     email: {
       label: 'User Email',
       description: 'Email address of a user',
-      type: 'hidden',
+      type: 'string',
+      unsafe_hidden: true,
+      required: false,
       default: {
         '@if': {
-          exists: { '@path': '$.context.traits.email' },
-          then: { '@path': '$.context.traits.email' },
-          else: { '@path': '$.traits.email' }
+          exists: { '@path': '$.traits.email' },
+          then: { '@path': '$.traits.email' },
+          else: { '@path': '$.properties.email' }
         }
       }
     },
     advertising_id: {
       label: 'User Mobile Advertising ID',
-      description: "User's Mobile Advertising Id",
-      type: 'hidden',
+      description: "User's mobile advertising Id",
+      type: 'string',
+      unsafe_hidden: true,
       default: {
         '@path': '$.context.device.advertisingId'
       },
-      required: true
+      required: false
     },
     device_type: {
       label: 'User Mobile Device Type', // This field is required to determine the type of the advertising Id: IDFA or GAID
-      description: "The user's mobile device type",
-      type: 'hidden',
+      description: "User's mobile device type",
+      type: 'string',
+      unsafe_hidden: true,
       default: {
         '@path': '$.context.device.type'
       },
-      required: true
+      required: false
     },
-    send_advertising_id: {
-      label: 'Send Mobile Advertising ID',
-      description: 'Send mobile advertising ID (IDFA or Google Ad Id) to Yahoo. Segment will hash MAIDs',
-      type: 'boolean',
+    identifier: {
+      label: 'User Identifier',
+      description: 'Specify the identifier(s) to send to Yahoo',
+      type: 'string',
       required: true,
-      default: true
-    },
-    send_email: {
-      label: 'Send User Email',
-      description: 'Send user email to Yahoo. Segment will hash emails',
-      type: 'boolean',
-      required: true,
-      default: true
+      default: 'email',
+      choices: [
+        { value: 'email', label: 'Send email' },
+        { value: 'maid', label: 'Send MAID' },
+        { value: 'email_maid', label: 'Send email and/or MAID' }
+      ]
     },
     gdpr_flag: {
       label: 'GDPR Flag',
@@ -127,48 +132,44 @@ const action: ActionDefinition<Settings, Payload> = {
     }
   },
 
-  perform: (request, { payload, auth }) => {
+  perform: (request, { payload, auth, audienceSettings }) => {
     const rt_access_token = auth?.accessToken
-    if (rt_access_token) {
-      throw new IntegrationError('Missing authentication token', 'MISSING_REQUIRED_FIELD', 400)
+    if (!audienceSettings) {
+      throw new IntegrationError('Bad Request: no audienceSettings found.', 'INVALID_REQUEST_DATA', 400)
     }
-    const body = gen_update_segment_payload([payload])
-    return request('https://dataxonline.yahoo.com/online/audience/', {
-      method: 'POST',
-      json: body,
-      headers: {
-        Authorization: `Bearer ${auth?.accessToken}`
-      }
-    })
-      .then((response) => response.json())
-      .then((response) => {
-        return response
+    const body = gen_update_segment_payload([payload], audienceSettings)
+    // Send request to Yahoo only when the event includes selected Ids
+    if (body.data.length > 0) {
+      return request('https://dataxonline.yahoo.com/online/audience/', {
+        method: 'POST',
+        json: body,
+        headers: {
+          Authorization: `Bearer ${rt_access_token}`
+        }
       })
-      .catch((err) => {
-        console.log('perform: error updating segment >', err)
-      })
+    } else {
+      throw new PayloadValidationError('Email and / or Advertising Id not available in the profile(s)')
+    }
   },
-  performBatch: (request, { payload, auth }) => {
+  performBatch: (request, { payload, audienceSettings, auth }) => {
     const rt_access_token = auth?.accessToken
-    if (!rt_access_token) {
-      throw new IntegrationError('Missing authentication token', 'MISSING_REQUIRED_FIELD', 400)
-    }
-    const body = gen_update_segment_payload(payload)
 
-    return request('https://dataxonline.yahoo.com/online/audience/', {
-      method: 'POST',
-      json: body,
-      headers: {
-        Authorization: `Bearer ${rt_access_token}`
-      }
-    })
-      .then((response) => response.json())
-      .then((response) => {
-        return response
+    if (!audienceSettings) {
+      throw new IntegrationError('Bad Request: no audienceSettings found.', 'INVALID_REQUEST_DATA', 400)
+    }
+    const body = gen_update_segment_payload(payload, audienceSettings)
+    // Send request to Yahoo only when all events in the batch include selected Ids
+    if (body.data.length > 0) {
+      return request('https://dataxonline.yahoo.com/online/audience/', {
+        method: 'POST',
+        json: body,
+        headers: {
+          Authorization: `Bearer ${rt_access_token}`
+        }
       })
-      .catch((err) => {
-        console.log('perform: error updating segment >', err)
-      })
+    } else {
+      throw new PayloadValidationError('Email and / or Advertising Id not available in the profile(s)')
+    }
   }
 }
 

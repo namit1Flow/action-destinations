@@ -630,7 +630,7 @@ export class Destination<Settings = JSONObject, AudienceSettings = JSONObject> {
       const isBatch = Array.isArray(events)
       const allEvents = (isBatch ? events : [events]) as SegmentEvent[]
       const subscribedEvents = allEvents.filter((event) => validate(parsedSubscription, event))
-
+      console.log('Hello world!')
       if (subscribedEvents.length === 0) {
         results = [{ output: 'not subscribed' }]
         return results
