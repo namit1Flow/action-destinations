@@ -63,7 +63,7 @@ jobs:
       - name: Publish Canary Packages
         id: publish-packages
         run: |
-          yarn lerna publish -y --canary --preid "$(git branch --show-current).$(git rev-parse --short HEAD)" --no-push --no-git-tag-version --summary-file
+          yarn lerna publish -y --canary --preid "$(git branch --show-current)-$(git rev-parse --short HEAD)" --no-push --no-git-tag-version --summary-file
           echo "ACTION_DESTINATIONS_VERSION=$(jq -r '.[] | select(.packageName == "@segment/action-destinations") | .version' lerna-publish-summary.json)" >> "$GITHUB_OUTPUT"
           echo "ACTIONS_CORE_VERSION=$(jq -r '.[] | select(.packageName == "@segment/actions-core") | .version' lerna-publish-summary.json)" >> "$GITHUB_OUTPUT"
 
