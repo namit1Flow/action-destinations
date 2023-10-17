@@ -76,12 +76,12 @@ const action: ActionDefinition<Settings, Payload> = {
   },
   perform: async (request, { settings, payload, statsContext, logger }) => {
     logger?.error('actions-tiktok-audiences CALLING ADD')
-    statsContext?.statsClient?.incr('addUser', 1, statsContext?.tags)
+    statsContext?.statsClient?.incr('addUserLegacy', 1, statsContext?.tags)
     return processPayload(request, settings, [payload], 'add')
   },
   performBatch: async (request, { settings, payload, statsContext, logger }) => {
-    logger?.error('actions-tiktok-audiences CALLING ADD')
-    statsContext?.statsClient?.incr('addUser', 1, statsContext?.tags)
+    logger?.error('actions-tiktok-audiences CALLING ADD batch')
+    statsContext?.statsClient?.incr('addUserLegacy', 1, statsContext?.tags)
     return processPayload(request, settings, payload, 'add')
   }
 }
