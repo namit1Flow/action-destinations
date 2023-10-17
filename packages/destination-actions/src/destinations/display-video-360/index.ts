@@ -21,7 +21,7 @@ const destination: AudienceDestinationDefinition<Settings, AudienceSettings> = {
       headers: {
         'Access-Token': `Bearer token`, // TODO: Update
         'Content-Type': 'application/json',
-        'Login-Customer-Id': 'products/DISPLAY_VIDEO_ADVERTISER/customers/1109207483' // TODO: Replace, find out if you can put audience settings here. or should this he a destination setting?
+        'Login-Customer-Id': 'products/DISPLAY_VIDEO_ADVERTISER/customers/advertiser_id' // TODO: Replace, find out if you can put audience settings here. or should this he a destination setting?
       }
     }
   },
